@@ -1,0 +1,19 @@
+# Copyright 2019 Daniel Harrison. All Rights Reserved.
+
+[package]
+name = "cargo-stress"
+version = "0.1.0"
+authors = ["Daniel Harrison <daniel.harrison@gmail.com>"]
+edition = "2018"
+
+# crates.io stuff
+description = "A utility for catching non-deterministic test failures"
+repository = "https://github.com/danhhz/cargo-stress"
+readme = "README.md"
+keywords = ["stress", "unit", "test"]
+categories = ["development-tools", "development-tools::cargo-plugins", "development-tools::debugging", "development-tools::testing", "command-line-utilities"]
+license = "Apache-2.0"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
