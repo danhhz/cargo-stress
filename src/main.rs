@@ -1,5 +1,6 @@
 // Copyright 2019 Daniel Harrison. All Rights Reserved.
 
+use std::collections::HashSet;
 use std::env;
 use std::error;
 use std::io;
@@ -18,6 +19,12 @@ use serde_json;
 #[derive(Deserialize, Debug)]
 struct BuildMessage {
     executable: Option<path::PathBuf>,
+    target: Option<BuildMessageTarget>,
+}
+
+#[derive(Deserialize, Debug)]
+struct BuildMessageTarget {
+    kind: Vec<String>,
 }
 
 fn main() {
@@ -52,6 +59,11 @@ fn run(args: ParsedArgs) -> Result<(), Box<dyn error::Error>> {
         .map(serde_json::from_str::<BuildMessage>)
         .collect::<Result<Vec<BuildMessage>, _>>()?
         .iter()
+        .filter(|x| {
+            x.target
+                .as_ref()
+                .map_or(false, |t| t.kind.contains(&String::from("lib")))
+        })
         .flat_map(|x| x.executable.clone())
         .collect::<Vec<_>>();
 
@@ -80,7 +92,6 @@ fn run(args: ParsedArgs) -> Result<(), Box<dyn error::Error>> {
         thread::spawn(move || progress(start, runs, failures))
     };
 
-    const MAX_FAILURES: usize = 1;
     loop {
         let result = run_results_rx.recv()?;
         let runs = runs.fetch_add(1, atomic::Ordering::SeqCst) + 1;
@@ -100,7 +111,7 @@ fn run(args: ParsedArgs) -> Result<(), Box<dyn error::Error>> {
             );
         };
 
-        if failures >= MAX_FAILURES {
+        if failures >= args.max_fails {
             eprintln!(
                 "{} runs completed, {} failures, over {}s",
                 runs,
@@ -115,13 +126,46 @@ fn run(args: ParsedArgs) -> Result<(), Box<dyn error::Error>> {
     }
 }
 
+const CARGO_TEST_PARAM_ARGS: &'static [&'static str] = &[
+    "--bin",
+    "--example",
+    "--test",
+    "--bench",
+    "-p",
+    "--package",
+    "--exclude",
+    "-j",
+    "--jobs",
+    "--profile",
+    "--features",
+    "--target",
+    "--target-dir",
+    "--manifest-path",
+    "--message-format",
+    "--color",
+    "--config",
+    "-Z",
+];
+
+struct Arg<T: Parse>(Fn(&mut ParsedArgs) -> &mut T);
+
+const CARGO_STRESS_ARGS: &'static [(&'static str, Arg<T: Parse>)] =
+    &[("--maxfails", Arg(|a| &mut a.max_fails))];
+
 struct ParsedArgs {
+    max_fails: usize,
     cargo_args: Vec<String>,
     test_args: Vec<String>,
 }
 
 fn parse_args<T: AsRef<str>>(args: &[T]) -> ParsedArgs {
+    let param_args = CARGO_TEST_PARAM_ARGS
+        .iter()
+        .map(|a| a.to_string())
+        .collect::<HashSet<_>>();
+
     let mut parsed = ParsedArgs {
+        max_fails: 1,
         cargo_args: vec![],
         test_args: vec![],
     };
@@ -134,12 +178,19 @@ fn parse_args<T: AsRef<str>>(args: &[T]) -> ParsedArgs {
             i += 1;
         }
     }
+    let mut param_arg = false;
     while let Some(arg) = args.get(i) {
         i += 1;
         if arg.as_ref() == "--" {
             break;
         }
-        if arg.as_ref().starts_with("-") {
+        if param_arg {
+            parsed.cargo_args.push(arg.as_ref().to_string());
+            param_arg = false;
+        } else if param_args.contains(arg.as_ref()) {
+            parsed.cargo_args.push(arg.as_ref().to_string());
+            param_arg = true;
+        } else if arg.as_ref().starts_with("-") {
             parsed.cargo_args.push(arg.as_ref().to_string());
         } else {
             parsed.test_args.push(arg.as_ref().to_string());
@@ -150,6 +201,8 @@ fn parse_args<T: AsRef<str>>(args: &[T]) -> ParsedArgs {
             parsed.test_args.push(arg.as_ref().to_string());
         }
     }
+    eprintln!("cargo args: {:?}", &parsed.cargo_args);
+    eprintln!("test args: {:?}", &parsed.test_args);
     parsed
 }
 
@@ -226,6 +279,16 @@ mod tests {
             ]);
             assert_eq!(parsed.cargo_args, ["--foo"]);
             assert_eq!(parsed.test_args, ["bar", "baz", "--qux", "--"]);
+        }
+        {
+            let parsed = parse_args(&["cargo", "stress", "-p", "foo", "bar", "--", "baz"]);
+            assert_eq!(parsed.cargo_args, ["-", "foo"]);
+            assert_eq!(parsed.test_args, ["bar", "baz"]);
+        }
+        {
+            let parsed = parse_args(&["cargo", "stress", "--package", "foo", "bar", "--", "baz"]);
+            assert_eq!(parsed.cargo_args, ["--package", "foo"]);
+            assert_eq!(parsed.test_args, ["bar", "baz"]);
         }
     }
 
