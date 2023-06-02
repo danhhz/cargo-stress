@@ -199,34 +199,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_args() {
-        {
-            let parsed = parse_args(&["cargo", "stress"]);
-            assert_eq!(parsed.cargo_args, [] as [String; 0]);
-            assert_eq!(parsed.test_args, [] as [String; 0]);
-        }
-        {
-            let parsed = parse_args(&["cargo", "stress", "--foo"]);
-            assert_eq!(parsed.cargo_args, ["--foo"]);
-            assert_eq!(parsed.test_args, [] as [String; 0]);
-        }
-        {
-            let parsed = parse_args(&["cargo", "stress", "--foo", "bar", "--"]);
-            assert_eq!(parsed.cargo_args, ["--foo"]);
-            assert_eq!(parsed.test_args, ["bar"]);
-        }
-        {
-            let parsed = parse_args(&["cargo", "stress", "--", "--bar"]);
-            assert_eq!(parsed.cargo_args, [] as [String; 0]);
-            assert_eq!(parsed.test_args, ["--bar"]);
-        }
-        {
-            let parsed = parse_args(&[
-                "cargo", "stress", "--foo", "bar", "--", "baz", "--qux", "--",
-            ]);
-            assert_eq!(parsed.cargo_args, ["--foo"]);
-            assert_eq!(parsed.test_args, ["bar", "baz", "--qux", "--"]);
-        }
+    fn parse() {
+        datadriven::walk("tests/parse", |f| {
+            f.run(|s| -> String {
+                let result = match s.directive.as_str() {
+                    "parse" => {
+                        let mut result = String::new();
+                        let parsed = parse_args(&s.input.trim().split(" ").collect::<Vec<_>>());
+                        if !parsed.cargo_args.is_empty() {
+                            result.push_str("cargo: ");
+                            result.push_str(&parsed.cargo_args.as_slice().join(" "));
+                            result.push('\n');
+                        }
+                        if !parsed.test_args.is_empty() {
+                            result.push_str("test: ");
+                            result.push_str(&parsed.test_args.as_slice().join(" "));
+                            result.push('\n');
+                        }
+                        if result.is_empty() {
+                            result.push_str("<empty>\n");
+                        }
+                        result
+                    }
+                    _ => "unhandled\n".into(),
+                };
+                s.expect_empty().unwrap();
+                result
+            })
+        });
     }
 
     #[test]

@@ -1,0 +1,35 @@
+# Copyright 2023 Daniel Harrison. All Rights Reserved.
+
+parse
+cargo stress
+----
+<empty>
+
+
+parse
+cargo-stress
+----
+<empty>
+
+
+parse
+cargo stress --foo
+----
+cargo: --foo
+
+parse
+cargo stress --foo bar --
+----
+cargo: --foo
+test: bar
+
+parse
+cargo stress -- --bar
+----
+test: --bar
+
+parse
+cargo stress --foo bar -- baz --qux --
+----
+cargo: --foo
+test: bar baz --qux --
