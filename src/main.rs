@@ -64,8 +64,9 @@ fn run(args: ParsedArgs) -> Result<(), Box<dyn error::Error>> {
     }
     let start = time::Instant::now();
     let (run_results_tx, run_results_rx) = mpsc::sync_channel(1);
-    const PARALLELISM: usize = 8;
-    let _workers = (0..PARALLELISM)
+
+    let parallelism = args.parallelism.unwrap_or_else(|| num_cpus::get());
+    let _workers = (0..parallelism)
         .map(|_| {
             let (test_binaries, test_args) = (test_binaries.clone(), args.test_args.clone());
             let run_results_tx = run_results_tx.clone();
@@ -118,12 +119,14 @@ fn run(args: ParsedArgs) -> Result<(), Box<dyn error::Error>> {
 struct ParsedArgs {
     cargo_args: Vec<String>,
     test_args: Vec<String>,
+    parallelism: Option<usize>,
 }
 
 fn parse_args<T: AsRef<str>>(args: &[T]) -> ParsedArgs {
     let mut parsed = ParsedArgs {
         cargo_args: vec![],
         test_args: vec![],
+        parallelism: None,
     };
     let mut i = 0;
     // Skip past the binary
@@ -134,6 +137,32 @@ fn parse_args<T: AsRef<str>>(args: &[T]) -> ParsedArgs {
             i += 1;
         }
     }
+
+    // `cargo-stress` itself supports a single parameter, '--parallelism'.
+    if let Some(arg) = args.get(i) {
+        const PARALLELISM_ARG: &str = "--parallelism";
+        if arg.as_ref().starts_with(PARALLELISM_ARG) {
+            // Support either --parallelism <val> or --paralelism=<val>.
+            let parallelism = if arg.as_ref() == PARALLELISM_ARG {
+                i += 1;
+                args.get(i)
+                    .expect("expected value for --parallelism")
+                    .as_ref()
+            } else if let Some((_, val)) = arg.as_ref().split_once("=") {
+                val
+            } else {
+                panic!("unexpected cargo-stress parameter {}", arg.as_ref());
+            };
+
+            let parallelism: usize = parallelism
+                .parse()
+                .expect("failed to parse --parallelism as integer");
+            parsed.parallelism = Some(parallelism);
+
+            i += 1;
+        }
+    }
+
     while let Some(arg) = args.get(i) {
         i += 1;
         if arg.as_ref() == "--" {
