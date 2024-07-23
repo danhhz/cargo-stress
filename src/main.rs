@@ -65,7 +65,10 @@ fn run(args: ParsedArgs) -> Result<(), Box<dyn error::Error>> {
     let start = time::Instant::now();
     let (run_results_tx, run_results_rx) = mpsc::sync_channel(1);
 
-    let parallelism = args.parallelism.unwrap_or_else(|| num_cpus::get());
+    let parallelism = args
+        .parallelism
+        .or_else(|| std::thread::available_parallelism().map(|n| n.get()).ok())
+        .unwrap_or(4);
     let _workers = (0..parallelism)
         .map(|_| {
             let (test_binaries, test_args) = (test_binaries.clone(), args.test_args.clone());
