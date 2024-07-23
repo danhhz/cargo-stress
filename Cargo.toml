@@ -2,7 +2,7 @@
 
 [package]
 name = "cargo-stress"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Daniel Harrison <daniel.harrison@gmail.com>"]
 edition = "2018"
 
